@@ -12,7 +12,7 @@ from gunpowder.roi import Roi
 logger = logging.getLogger(__name__)
 
 class ElasticAugment(BatchFilter):
-    '''Elasticly deform a batch. Requests larger batches upstream to avoid data 
+    '''Elastically deform a batch. Requests larger batches upstream to avoid data
     loss due to rotation and jitter.
 
     Args:
@@ -52,7 +52,7 @@ class ElasticAugment(BatchFilter):
             interpolate to obtain the full resolution transformation. This can
             significantly speed up this node, at the expense of having visible
             piecewise linear deformations for large factors. Usually, a factor
-            of 4 can savely by used without noticable changes. However, the
+            of 4 can safely by used without noticeable changes. However, the
             default is 1 (i.e., no subsampling).
 
         spatial_dims (``int``):
@@ -164,7 +164,7 @@ class ElasticAugment(BatchFilter):
             )
             self.transformations[key] = transformation
 
-            # get ROI of all voxels necessary to perfrom transformation
+            # get ROI of all voxels necessary to perform transformation
             #
             # for that we follow the same transformations to get from the
             # request ROI to the target ROI in master ROI in voxels, just in
