@@ -7,6 +7,7 @@ from .batch_provider import BatchProvider
 from .crop import Crop
 from .csv_points_source import CsvPointsSource
 from .defect_augment import DefectAugment
+from .directory_source import DirectorySource
 from .downsample import DownSample
 from .dvid_source import DvidSource
 from .elastic_augment import ElasticAugment
