@@ -125,6 +125,10 @@ class Expand(BatchFilter):
 
             self.updates(array_key, spec)
 
+            if not ax_props['propagate']:
+                ax_props['req_key'] = ArrayKey('_' + str(array_key) + '_squeeze')
+                self.provides(ax_props['req_key'], ax_props['spec'])
+
     def __expand_spec(self, spec, axis, sq_spec):
 
         if spec.roi is not None:
@@ -146,15 +150,14 @@ class Expand(BatchFilter):
             if req.voxel_size is not None:
                 (req.voxel_size, voxel_shape_el) = squeeze_coordinate(req.voxel_size, axis)
 
-            if ax_props['propagate']:
-                spec = ArraySpec()
-                spec.roi = Roi((roi_offset_el,), (roi_shape_el,))
-                if voxel_shape_el is not None:
-                    spec.voxel_size = Coordinate((voxel_shape_el))
-                else:
-                    spec.voxel_size = ax_props['spec'].voxel_size
+            spec = ArraySpec()
+            spec.roi = Roi((roi_offset_el,), (roi_shape_el,))
+            if voxel_shape_el is not None:
+                spec.voxel_size = Coordinate((voxel_shape_el))
+            else:
+                spec.voxel_size = ax_props['spec'].voxel_size
 
-                request[ax_props['req_key']] = spec
+            request[ax_props['req_key']] = spec
 
     def process(self, batch, request):
 
@@ -162,7 +165,5 @@ class Expand(BatchFilter):
             axis = ax_props['axis']
             array = batch.arrays[array_key]
             array.data = np.expand_dims(array.data, axis=axis)
-            sq_spec = ax_props['spec']
-            if ax_props['propagate']:
-                sq_spec = batch[ax_props['req_key']].spec
+            sq_spec = batch[ax_props['req_key']].spec
             self.__expand_spec(array.spec, axis, sq_spec)
