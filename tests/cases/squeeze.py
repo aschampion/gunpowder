@@ -9,17 +9,15 @@ class SqueezeTestSource(BatchProvider):
         self.provides(
             ArrayKeys.RAW,
             ArraySpec(
-                roi=Roi((20000, 2000, 2000), (2000, 100, 100)),
+                roi=Roi((20000, 2000, 2000), (2000, 30, 100)),
                 voxel_size=(20, 2, 2)))
         self.provides(
             ArrayKeys.GT_LABELS,
             ArraySpec(
-                roi=Roi((20100,2010,2010), (1800,80,80)),
+                roi=Roi((20100,2010,2010), (1800,10,80)),
                 voxel_size=(20, 2, 2)))
 
     def provide(self, request):
-
-        # print("ScanTestSource: Got request " + str(request))
 
         batch = Batch()
 
@@ -28,8 +26,6 @@ class SqueezeTestSource(BatchProvider):
 
             roi = spec.roi
             roi_voxel = roi // self.spec[array_key].voxel_size
-            print(array_key, spec, roi_voxel)
-            # print("ScanTestSource: Adding " + str(array_key))
 
             # the z,y,x coordinates of the ROI
             meshgrids = np.meshgrid(
@@ -37,9 +33,6 @@ class SqueezeTestSource(BatchProvider):
                     range(roi_voxel.get_begin()[1], roi_voxel.get_end()[1]),
                     range(roi_voxel.get_begin()[2], roi_voxel.get_end()[2]), indexing='ij')
             data = meshgrids[0] + meshgrids[1] + meshgrids[2]
-            print(np.amin(data), np.amax(data))
-
-            # print("Roi is: " + str(roi))
 
             spec = self.spec[array_key].copy()
             spec.roi = roi
@@ -77,6 +70,18 @@ class TestSqueeze(ProviderTest):
             batch = pipeline.request_batch(full_request)
             voxel_size = pipeline.spec[ArrayKeys.RAW].voxel_size
 
+        comb_valid_roi = None
+        for (array_key, array) in batch.arrays.items():
+            roi = array.spec.roi
+            min_valid = roi.get_begin() - chunk_request[array_key].roi.get_begin()
+            max_valid = roi.get_shape() - chunk_request[array_key].roi.get_shape() + (1,)*roi.dims()
+            valid_roi = Roi(min_valid, max_valid)
+            if comb_valid_roi is None:
+                comb_valid_roi = valid_roi
+            else:
+                comb_valid_roi = comb_valid_roi.intersect(valid_roi)
+        valid_sl = list(map(slice, comb_valid_roi.get_begin()//voxel_size, comb_valid_roi.get_end()//voxel_size))
+
         # assert that pixels encode their position
         for (array_key, array) in batch.arrays.items():
 
@@ -91,21 +96,7 @@ class TestSqueeze(ProviderTest):
                     range(roi.get_begin()[2]//voxel_size[2], roi.get_end()[2]//voxel_size[2]), indexing='ij')
             data = meshgrids[0] + meshgrids[1] + meshgrids[2]
 
-            if not (array.data == data).all():
-                print(array_key)
-                print(array.spec)
-                print(roi)
-                print(roi.get_begin())
-                print(array.data.shape)
-                print(data.shape)
-                print(array.data[0, 0, 0])
-                print(data[0, 0, 0])
-                print(np.amin(array.data))
-                print(np.amin(data))
-                print(np.amax(array.data))
-                print(np.amax(data))
-                print(voxel_size)
-            self.assertTrue((array.data == data).all())
+            self.assertTrue((array.data[valid_sl] == data[valid_sl]).all())
 
         assert(batch.arrays[ArrayKeys.RAW].spec.roi.get_offset() == (20000, 2000, 2000))
 
