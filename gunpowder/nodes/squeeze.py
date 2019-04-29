@@ -165,5 +165,8 @@ class Expand(BatchFilter):
             axis = ax_props['axis']
             array = batch.arrays[array_key]
             array.data = np.expand_dims(array.data, axis=axis)
-            sq_spec = batch[ax_props['req_key']].spec
+            if ax_props['propagate']:
+                sq_spec = batch[ax_props['req_key']].spec
+            else:
+                sq_spec = request[ax_props['req_key']]
             self.__expand_spec(array.spec, axis, sq_spec)
