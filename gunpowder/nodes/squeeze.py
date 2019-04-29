@@ -116,6 +116,14 @@ class Expand(BatchFilter):
 
         self.axes = {**axes, **squeeze_node.axes}
 
+        for (array_key, ax_props) in self.axes.items():
+            if not ax_props['propagate']:
+                ax_props['req_key'] = ArrayKey('_' + str(array_key) + '_squeeze')
+
+    def stubs(self):
+
+        return StubArrayProvider({p['req_key']: p['spec'] for (_, p) in self.axes.items() if not p['propagate']})
+
     def setup(self):
 
         for (array_key, ax_props) in self.axes.items():
@@ -124,10 +132,6 @@ class Expand(BatchFilter):
             self.__expand_spec(spec, axis, ax_props['spec'])
 
             self.updates(array_key, spec)
-
-            if not ax_props['propagate']:
-                ax_props['req_key'] = ArrayKey('_' + str(array_key) + '_squeeze')
-                self.provides(ax_props['req_key'], ax_props['spec'])
 
     def __expand_spec(self, spec, axis, sq_spec):
 
@@ -165,8 +169,22 @@ class Expand(BatchFilter):
             axis = ax_props['axis']
             array = batch.arrays[array_key]
             array.data = np.expand_dims(array.data, axis=axis)
-            if ax_props['propagate']:
-                sq_spec = batch[ax_props['req_key']].spec
-            else:
-                sq_spec = request[ax_props['req_key']]
+            sq_spec = batch[ax_props['req_key']].spec
             self.__expand_spec(array.spec, axis, sq_spec)
+
+
+class StubArrayProvider(BatchFilter):
+    def __init__(self, arrays):
+
+        self.arrays = arrays
+
+    def setup(self):
+
+        for (key, spec) in self.arrays.items():
+            self.provides(key, spec)
+
+    def process(self, batch, request):
+
+        for (key, _) in self.arrays.items():
+            data = np.array([0])
+            batch[key] = Array(data, spec=request[key])

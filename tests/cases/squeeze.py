@@ -53,8 +53,9 @@ class TestSqueeze(ProviderTest):
         chunk_request.add(ArrayKeys.GT_LABELS, (200,2,14))
 
         squeeze = Squeeze({ArrayKeys.RAW: 1, ArrayKeys.GT_LABELS: 1})
+        expand = squeeze.expand()
 
-        pipeline = source + squeeze + squeeze.expand() + Scan(chunk_request, num_workers=10)
+        pipeline = source + squeeze + expand.stubs() + expand + Scan(chunk_request, num_workers=10)
 
         with build(pipeline):
 
