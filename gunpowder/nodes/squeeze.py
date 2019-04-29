@@ -38,40 +38,37 @@ class Squeeze(BatchFilter):
             self,
             axes):
 
-        self.axes = {array_key: {'axis': ax} for (array_key, ax) in axes.items()}
+        self.axes = {array_key: {'axis': ax, 'propagate': True} for (array_key, ax) in axes.items()}
 
     def __squeeze_spec(self, spec, axis):
 
+        sq_spec = ArraySpec()
         if spec.roi is not None:
             (offset, roi_offset_el) = squeeze_coordinate(spec.roi.get_offset(), axis)
             (shape, roi_shape_el) = squeeze_coordinate(spec.roi.get_shape(), axis)
             spec.roi = Roi(offset, shape)
+            sq_spec.roi = Roi((roi_offset_el,), (roi_shape_el,))
         if spec.voxel_size is not None:
             (spec.voxel_size, voxel_size_el) = squeeze_coordinate(spec.voxel_size, axis)
+            sq_spec.voxel_size = Coordinate((voxel_size_el,))
 
-        return (roi_offset_el, roi_shape_el, voxel_size_el)
+        return sq_spec
 
     def expand(self):
 
-        return Expand(self)
+        return Expand(squeeze_node=self)
 
     def setup(self):
 
         for (array_key, ax_props) in self.axes.items():
             axis = ax_props['axis']
             spec = self.spec[array_key].copy()
-            (ax_props['roi_offset'],
-             ax_props['roi_shape'],
-             ax_props['voxel_shape']) = self.__squeeze_spec(spec, axis)
+            ax_props['spec'] = self.__squeeze_spec(spec, axis)
 
             self.updates(array_key, spec)
 
             ax_props['req_key'] = ArrayKey('_' + str(array_key) + '_squeeze')
-            spec = ArraySpec()
-
-            spec.roi = Roi((ax_props['roi_offset'],), (ax_props['roi_shape'],))
-            spec.voxel_size = Coordinate((ax_props['voxel_shape'],))
-            self.provides(ax_props['req_key'], spec)
+            self.provides(ax_props['req_key'], ax_props['spec'])
 
     def prepare(self, request):
 
@@ -100,7 +97,7 @@ class Squeeze(BatchFilter):
 
 
 class Expand(BatchFilter):
-    '''Expand a singleton dimension into batches. Must be matched with an
+    '''Expand a singleton dimension into batches. May be matched with an
     :ref:`Squeeze` node upstream which has removed the singleton dimension
     which will be reinserted.
 
@@ -114,31 +111,32 @@ class Expand(BatchFilter):
 
     def __init__(
             self,
-            squeeze_node):
+            axes={},
+            squeeze_node=None):
 
-        self.squeeze_node = squeeze_node
+        self.axes = {**axes, **squeeze_node.axes}
 
     def setup(self):
 
-        for (array_key, ax_props) in self.squeeze_node.axes.items():
+        for (array_key, ax_props) in self.axes.items():
             axis = ax_props['axis']
             spec = self.spec[array_key].copy()
-            self.__expand_spec(spec, axis, ax_props['roi_offset'], ax_props['roi_shape'], ax_props['voxel_shape'])
+            self.__expand_spec(spec, axis, ax_props['spec'])
 
             self.updates(array_key, spec)
 
-    def __expand_spec(self, spec, axis, offset_el, shape_el, voxel_size_el):
+    def __expand_spec(self, spec, axis, sq_spec):
 
         if spec.roi is not None:
-            offset = expand_coordinate(spec.roi.get_offset(), axis, offset_el)
-            shape = expand_coordinate(spec.roi.get_shape(), axis, shape_el)
+            offset = expand_coordinate(spec.roi.get_offset(), axis, sq_spec.roi.get_offset()[0])
+            shape = expand_coordinate(spec.roi.get_shape(), axis, sq_spec.roi.get_shape()[0])
             spec.roi = Roi(offset, shape)
         if spec.voxel_size is not None:
-            spec.voxel_size = expand_coordinate(spec.voxel_size, axis, voxel_size_el)
+            spec.voxel_size = expand_coordinate(spec.voxel_size, axis, sq_spec.voxel_size[0])
 
     def prepare(self, request):
 
-        for (array_key, ax_props) in self.squeeze_node.axes.items():
+        for (array_key, ax_props) in self.axes.items():
             axis = ax_props['axis']
             req = request[array_key]
             voxel_shape_el = None
@@ -148,21 +146,23 @@ class Expand(BatchFilter):
             if req.voxel_size is not None:
                 (req.voxel_size, voxel_shape_el) = squeeze_coordinate(req.voxel_size, axis)
 
-            spec = ArraySpec()
-            spec.roi = Roi((roi_offset_el,), (roi_shape_el,))
-            if voxel_shape_el is not None:
-                spec.voxel_size = Coordinate((voxel_shape_el))
-            else:
-                spec.voxel_size = Coordinate((ax_props['voxel_shape'],))
+            if ax_props['propagate']:
+                spec = ArraySpec()
+                spec.roi = Roi((roi_offset_el,), (roi_shape_el,))
+                if voxel_shape_el is not None:
+                    spec.voxel_size = Coordinate((voxel_shape_el))
+                else:
+                    spec.voxel_size = ax_props['spec'].voxel_size
 
-            request[ax_props['req_key']] = spec
+                request[ax_props['req_key']] = spec
 
     def process(self, batch, request):
 
-        for (array_key, ax_props) in self.squeeze_node.axes.items():
+        for (array_key, ax_props) in self.axes.items():
             axis = ax_props['axis']
             array = batch.arrays[array_key]
             array.data = np.expand_dims(array.data, axis=axis)
-            sq = batch[ax_props['req_key']]
-            self.__expand_spec(array.spec, axis,
-                sq.spec.roi.get_offset()[0], sq.spec.roi.get_shape()[0], sq.spec.voxel_size[0])
+            sq_spec = ax_props['spec']
+            if ax_props['propagate']:
+                sq_spec = batch[ax_props['req_key']].spec
+            self.__expand_spec(array.spec, axis, sq_spec)
