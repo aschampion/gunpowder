@@ -116,7 +116,7 @@ def crop_spatial(fmaps_in, shape):
     in_shape = fmaps_in.get_shape().as_list()
 
     offset = [0, 0] + [(in_shape[i] - shape[i]) // 2 for i in range(2, len(shape))]
-    size = in_shape[0:2] + shape[2:]
+    size = [-1, in_shape[1]] + shape[2:]
 
     fmaps = tf.slice(fmaps_in, offset, size)
 
