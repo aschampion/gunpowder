@@ -1,5 +1,7 @@
 import logging
 import numpy as np
+import string
+import random
 
 from .batch_filter import BatchFilter
 from gunpowder.array import Array, ArrayKey
@@ -67,7 +69,8 @@ class Squeeze(BatchFilter):
 
             self.updates(array_key, spec)
 
-            ax_props['req_key'] = ArrayKey('_' + str(array_key) + '_squeeze')
+            ax_props['req_key'] = ArrayKey('_' + str(array_key) + '_squeeze_' +
+                ''.join([random.choice(string.ascii_letters + string.digits) for _ in range(32)]))
             self.provides(ax_props['req_key'], ax_props['spec'])
 
     def prepare(self, request):
@@ -75,7 +78,10 @@ class Squeeze(BatchFilter):
         for (array_key, ax_props) in self.axes.items():
             axis = ax_props['axis']
             req = request[array_key]
-            squeeze_req = request[ax_props['req_key']]
+            if ax_props['req_key'] in request:
+                squeeze_req = request[ax_props['req_key']]
+            else:
+                squeeze_req = ax_props['spec']
             offset = expand_coordinate(req.roi.get_offset(), axis, squeeze_req.roi.get_offset()[0])
             shape = expand_coordinate(req.roi.get_shape(), axis, squeeze_req.roi.get_shape()[0])
             req.roi = Roi(offset, shape)
@@ -92,8 +98,13 @@ class Squeeze(BatchFilter):
             array.data = array.data.squeeze(axis=axis)
             self.__squeeze_spec(array.spec, axis)
 
+            if ax_props['req_key'] in request:
+                squeeze_req = request[ax_props['req_key']]
+            else:
+                squeeze_req = ax_props['spec']
+
             data = np.array([0])
-            batch[ax_props['req_key']] = Array(data, spec=request[ax_props['req_key']])
+            batch[ax_props['req_key']] = Array(data, spec=squeeze_req)
 
 
 class Expand(BatchFilter):
@@ -114,11 +125,15 @@ class Expand(BatchFilter):
             axes={},
             squeeze_node=None):
 
-        self.axes = {**axes, **squeeze_node.axes}
+        if squeeze_node:
+            self.axes = {**axes, **squeeze_node.axes}
+        else:
+            self.axes = {**axes}
 
         for (array_key, ax_props) in self.axes.items():
             if not ax_props['propagate']:
-                ax_props['req_key'] = ArrayKey('_' + str(array_key) + '_squeeze')
+                ax_props['req_key'] = ArrayKey('_' + str(array_key) + '_squeeze' +
+                    ''.join([random.choice(string.ascii_letters + string.digits) for _ in range(32)]))
 
     def stubs(self):
 
