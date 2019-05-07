@@ -59,12 +59,15 @@ class RandomLocation(BatchFilter):
             Default value is 1.0.
     '''
 
-    def __init__(self, min_masked=0, mask=None, ensure_nonempty=None, p_nonempty=1.0):
+    def __init__(self, min_masked=0, mask=None, mask_predicate=None, ensure_nonempty=None, p_nonempty=1.0):
 
         self.min_masked = min_masked
         self.mask = mask
         self.mask_spec = None
         self.mask_integral = None
+        self.mask_predicate = mask_predicate
+        if self.mask_predicate is None:
+            self.mask_predicate = lambda m: m > 0
         self.ensure_nonempty = ensure_nonempty
         self.points = None
         self.p_nonempty = p_nonempty
@@ -98,7 +101,7 @@ class RandomLocation(BatchFilter):
                 mask_integral_dtype = np.uint16
             logger.debug("chose %s as integral array dtype", mask_integral_dtype)
 
-            self.mask_integral = np.array(mask_data > 0, dtype=mask_integral_dtype)
+            self.mask_integral = np.array(self.mask_predicate(mask_data), dtype=mask_integral_dtype)
             self.mask_integral = integral_image(self.mask_integral)
 
         if self.ensure_nonempty:
