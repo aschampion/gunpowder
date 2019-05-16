@@ -11,9 +11,6 @@ logger = logging.getLogger(__name__)
 class BalanceLabels(BatchFilter):
     '''Creates a scale array to balance the loss between class labels.
 
-    Note that this only balances loss weights per-batch and does not accumulate
-    statistics about class balance across batches.
-
     Args:
 
         labels (:class:`ArrayKey`):
@@ -47,9 +44,15 @@ class BalanceLabels(BatchFilter):
             The number of classes. Labels will be expected to be in the
             interval [0, ``num_classes``). Defaults to 2 for binary
             classification.
+
+        cumulative(``bool``, optional):
+
+            If true, label counts will be accumulated across batches. Label
+            scales will balanced by the cumulative frequency, rather than the
+            per-batch frequency.
     '''
 
-    def __init__(self, labels, scales, mask=None, slab=None, num_classes=2):
+    def __init__(self, labels, scales, mask=None, slab=None, num_classes=2, cumulative=False):
 
         self.labels = labels
         self.scales = scales
@@ -62,6 +65,10 @@ class BalanceLabels(BatchFilter):
 
         self.slab = slab
         self.num_classes = num_classes
+
+        self.cumulative = cumulative
+        if self.cumulative:
+            self.counts = np.zeros(self.num_classes, dtype=np.uint64)
 
     def setup(self):
 
@@ -130,9 +137,11 @@ class BalanceLabels(BatchFilter):
     def __balance(self, labels, scale):
 
         # in the masked-in area, compute the fraction of per-class samples
-        masked_in = scale.sum()
         classes, counts = np.unique(labels[np.nonzero(scale)], return_counts=True)
-        fracs = counts.astype(float) / masked_in if masked_in > 0 else np.zeros(counts.size)
+        if self.cumulative:
+            self.counts[classes] += counts.astype(np.uint64)
+            counts = self.counts[classes]
+        fracs = counts.astype(float) / counts.sum() if counts.sum() > 0 else np.zeros(counts.size)
         np.clip(fracs, 0.05, 0.95, fracs)
 
         # compute the class weights
