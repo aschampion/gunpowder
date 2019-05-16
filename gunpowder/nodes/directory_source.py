@@ -93,8 +93,6 @@ class DirectorySource(BatchProvider):
     def __read_image(self, array_key, filename):
 
         dataset = skimage.io.imread(filename)
-        print(dataset.shape)
-        print('foooufjhalkj')
 
         if array_key in self.array_specs:
             spec = self.array_specs[array_key].copy()
@@ -139,6 +137,7 @@ class DirectorySource(BatchProvider):
                            array_key, filename, spec.dtype,
                            spec.interpolatable)
 
+        dataset.flags.writeable = False
         self.data[array_key] = dataset
         print(spec)
 
@@ -146,4 +145,4 @@ class DirectorySource(BatchProvider):
 
     def __read(self, array_key, roi):
         c = len(self.data[array_key].shape) - len(self.spec[array_key].voxel_size)
-        return self.data[array_key][(slice(None),)*c + roi.to_slices()]
+        return self.data[array_key][(slice(None),)*c + roi.to_slices()].copy()
